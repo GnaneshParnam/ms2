@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MA Map - Gini Index Analysis</title>
+    <script src="./libs/d3.js"></script>
+    <script src="libs/d3jstopojson.v1.js"></script>
+    <style>
+        /* General Page Styling */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f8f9fa;
+            color: #343a40;
+        }
+
+        h1 {
+            font-size: 2em;
+            color: #495057;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        h3 {
+            font-size: 1.2em;
+            color: #6c757d;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Tooltip Styling */
+        #tooltip {
+            position: absolute;
+            opacity: 1;
+            background: rgba(202, 230, 230, 0.8);
+            color: rgb(9, 8, 8);
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            pointer-events: none;
+            line-height: 1.5;
+        }
+
+        /* SVG Path Styling */
+        path {
+            stroke-width: .5px;
+            stroke: black;
+        }
+
+        path:hover {
+            opacity: .6;
+            stroke: black;
+            stroke-width: 2px;
+        }
+
+        /* Flexbox for Maps */
+        .maps-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+        }
+
+        /* SVG Container Styling */
+        .fig-container {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Title and Name Section -->
+    <h1>Assignment: Visualizing Gini Index by County in Massachusetts</h1>
+    <h3>Created by: Gnanesh Parnam</h3>
+
+    <!-- Maps Container -->
+    <div class="maps-container">
+        <div id="tooltip"></div>
+        <div class="container">
+            <div class="fig-container fig1"></div> <!-- Container for MAP A -->
+            <div class="fig-container fig2"></div> <!-- Container for MAP B -->
+            <div class="fig-container fig3"></div> <!-- Container for MAP C -->
+        </div>
+    </div>
+
+    <script>
+        const svgWidth = window.innerWidth / 2;
+        const svgHeight = window.innerWidth / 3;
+
+        const MA_counties = "./data/towns.topojson";
+        const gini_index = "./data/gini_index.csv";
+
+        // Load both files in parallel
+        Promise.all([
+            d3.json(MA_counties),
+            d3.csv(gini_index)
+        ]).then(data => {
+            const topology_data = data[0];
+            const csv_data = data[1];
+
+            // Function to generate MAP A
+            const generateMap1 = (topo_data, containerName, width, height, margin = 30) => {
+                const svg = d3.select(containerName).append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                const geojson = topojson.feature(topo_data, topo_data.objects.ma);
+                const projection = d3.geoMercator().fitSize([width - margin, height - margin], geojson);
+                const geoPath_generator = d3.geoPath().projection(projection);
+
+                const colorInterpolator = d3.interpolateRgbBasis(['#d73027','#fc8d59','#fee090','#e0f3f8','#91bfdb','#4575b4'].reverse());
+                const linearScale = d3.scaleLinear()
+                    .domain(d3.extent(geojson.features, d => d.properties.POP1980))
+                    .range([0, 1]);
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.selectAll("path")
+                  .data(geojson.features)
+                  .enter()
+                  .append("path")
+                  .attr("d", d => geoPath_generator(d))
+                  .attr("fill", d => colorInterpolator(linearScale(d.properties.POP1980)))
+                  .on("mouseenter", (event, d) => {
+                      tooltip.transition().duration(200).style("opacity", 1);
+                      tooltip.html(`Town: ${d.properties.TOWN}<br>Population 1980: ${d.properties.POP1980}`)
+                          .style("left", (event.pageX + 10) + "px")
+                          .style("top", (event.pageY - 20) + "px");
+                  })
+                  .on("mousemove", (event) => {
+                      tooltip.style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 20) + "px");
+                  })
+                  .on("mouseout", () => {
+                      tooltip.transition().duration(400).style("opacity", 0);
+                  });
+            };
+
+            // Function to generate MAP B (Population Change 1980-2010)
+            const generateMap2 = (topo_data, containerName, width, height, margin = 30) => {
+                const svg = d3.select(containerName).append("svg").attr("width", width).attr("height", height);
+
+                const geojson = topojson.feature(topo_data, topo_data.objects.ma);
+                const projection = d3.geoMercator().fitSize([width - margin, height - margin], geojson);
+                const geoPath_generator = d3.geoPath().projection(projection);
+
+                geojson.features.forEach(feature => {
+                    const pop1980 = feature.properties.POP1980;
+                    const pop2010 = feature.properties.POP2010;
+                    feature.properties.popChange = pop2010 - pop1980;
+                });
+
+                const colorInterpolator = d3.interpolateRdBu;
+                const changeScale = d3.scaleLinear()
+                    .domain(d3.extent(geojson.features, d => d.properties.popChange))
+                    .range([0, 1]);
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.selectAll("path")
+                    .data(geojson.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", d => geoPath_generator(d))
+                    .attr("fill", d => colorInterpolator(changeScale(d.properties.popChange)))
+                    .on("mouseenter", (event, d) => {
+                        tooltip.transition().duration(200).style("opacity", 1);
+                        tooltip.html(`Town: ${d.properties.TOWN}<br>Population Change 1980-2010: ${d.properties.popChange}`)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 20) + "px");
+                    })
+                    .on("mousemove", (event) => {
+                        tooltip.style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 20) + "px");
+                    })
+                    .on("mouseout", () => {
+                        tooltip.transition().duration(400).style("opacity", 0);
+                    });
+            };
+
+            // Function to generate MAP C (Gini Index for each year)
+            const generateMap3 = (topo_data, containerName, width, height, margin = 30) => {
+                const svg = d3.select(containerName).append("svg").attr("width", width).attr("height", height);
+
+                const geojson = topojson.feature(topo_data, topo_data.objects.ma);
+                const projection = d3.geoMercator().fitSize([width - margin, height - margin], geojson);
+                const geoPath_generator = d3.geoPath().projection(projection);
+
+                const giniDataByFips = {};
+                csv_data.forEach(row => {
+                    const fipsCode = row.id.slice(-5);
+                    if (!giniDataByFips[fipsCode]) {
+                        giniDataByFips[fipsCode] = [];
+                    }
+                    giniDataByFips[fipsCode].push({ year: row.year, giniIndex: +row['Estimate!!Gini Index'] });
+                });
+
+                geojson.features.forEach(feature => {
+                    const fipsCode = String(feature.properties.FIPS_STCO).padStart(5, '0');
+                    feature.properties.giniData = giniDataByFips[fipsCode] || [];
+                });
+
+                const colorInterpolator = d3.interpolateBlues;
+                const giniScale = d3.scaleLinear()
+                    .domain(d3.extent(csv_data, d => +d['Estimate!!Gini Index']))
+                    .range([0, 1]);
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.selectAll("path")
+                    .data(geojson.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", d => geoPath_generator(d))
+                    .attr("fill", d => {
+                        const data2019 = d.properties.giniData.find(data => data.year === '2019');
+                        return data2019 && !isNaN(data2019.giniIndex) ? colorInterpolator(giniScale(data2019.giniIndex)) : "#ccc";
+                    })
+                    .on("mouseenter", (event, d) => {
+                        tooltip.transition().duration(200).style("opacity", 1);
+                        //let tooltipContent = `<strong>Town: ${d.properties.TOWN}</strong><br>`;
+                        //tooltipContent += d.properties.giniData.length > 0 
+                         //   ? d.properties.giniData.map(data => `Year ${data.year}: Gini Index ${data.giniIndex}`).join("<br>")
+                         //   : "Gini Index Data: Unavailable";
+                        let tooltipContent = `<strong>Town: ${d.properties.TOWN}</strong><br>`;
+
+                        if (d.properties.giniData.length > 0) {
+                        // Sort the data by year in ascending order
+                            const sortedData = d.properties.giniData.sort((a, b) => a.year - b.year);
+
+                        // Generate the tooltip content in sorted order
+                            tooltipContent += sortedData
+                            .map(data => `Year ${data.year}: Gini Index ${data.giniIndex}`)
+                            .join("<br>");
+                        } else {
+                            tooltipContent += "Gini Index Data: Unavailable";
+                        }
+
+                        tooltip.html(tooltipContent)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 20) + "px");
+
+                        // Clear previous SVG chart if it exists
+                        tooltip.select("svg").remove();
+
+                        // Only proceed if there is Gini data available
+                        if (d.properties.giniData.length > 0) {
+                            // Set dimensions for the mini line chart
+                            const chartWidth = 150;
+                            const chartHeight = 50;
+                            const margin = { top: 5, right: 5, bottom: 20, left: 25 };
+                            
+                            // Append SVG to tooltip
+                            const svg = tooltip.append("svg")
+                                .attr("width", chartWidth + margin.left + margin.right)
+                                .attr("height", chartHeight + margin.top + margin.bottom)
+                                .style("margin-top", "8px") // Add some margin for separation
+                                .append("g")
+                                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                            // Define scales
+                            const xScale = d3.scaleTime()
+                                .domain(d3.extent(d.properties.giniData, data => new Date(data.year, 0, 1)))
+                                .range([0, chartWidth]);
+                            
+                            const yScale = d3.scaleLinear()
+                                .domain(d3.extent(d.properties.giniData, data => data.giniIndex))
+                                .range([chartHeight, 0]);
+
+                            // Add X and Y axes
+                            svg.append("g")
+                                .attr("transform", `translate(0,${chartHeight})`)
+                                .call(d3.axisBottom(xScale).ticks(4).tickFormat(d3.timeFormat("%Y")))
+                                .attr("font-size", "8px");
+
+                            svg.append("g")
+                                .call(d3.axisLeft(yScale).ticks(4))
+                                .attr("font-size", "8px");
+
+                            // Add grid lines
+                            svg.append("g")
+                                .attr("class", "grid")
+                                .call(d3.axisLeft(yScale).ticks(4).tickSize(-chartWidth).tickFormat(""))
+                                .style("stroke-dasharray", "2,2")
+                                .style("opacity", 0.3);
+
+                            // Line generator
+                            const line = d3.line()
+                                .x(data => xScale(new Date(data.year, 0, 1)))
+                                .y(data => yScale(data.giniIndex));
+
+                            // Append path
+                            svg.append("path")
+                                .datum(d.properties.giniData)
+                                .attr("fill", "none")
+                                .attr("stroke", "#00FF7F")
+                                .attr("stroke-width", 2.0)
+                                .attr("d", line);
+
+                            // Add circles on data points
+                            svg.selectAll("circle")
+                                .data(d.properties.giniData)
+                                .enter()
+                                .append("circle")
+                                .attr("cx", data => xScale(new Date(data.year, 0, 1)))
+                                .attr("cy", data => yScale(data.giniIndex))
+                                .attr("r", 1.5)
+                                .attr("fill", "orange");
+                        }
+                    })
+                    .on("mousemove", (event) => {
+                        tooltip.style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 20) + "px");
+                    })
+                    .on("mouseout", () => {
+                        tooltip.transition().duration(400).style("opacity", 0);
+                    });
+            };
+
+            generateMap1(topology_data, ".fig1", svgWidth, svgHeight);
+            generateMap2(topology_data, ".fig2", svgWidth, svgHeight);
+            generateMap3(topology_data, ".fig3", svgWidth, svgHeight);
+        });
+    </script>
+</body>
+</html>
